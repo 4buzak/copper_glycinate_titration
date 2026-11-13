@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>글리신산구리 정량분석 애니메이션</title>
+<style>
+  /* Layout: 16:9 animated stage, caption panel, control row — same look as the 화학전지 animation */
+  :root {
+    --ol: #2b2d42;
+    --bg: #fdf8ec;
+    --panel: #ffffff;
+    --accent: #e07a3c;
+    --blue: #3a86ff;
+    --muted: #5c6270;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ol);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    word-break: keep-all;
+  }
+  .app {
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding-block: 16px 24px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: var(--bg);
+  }
+  .stage {
+    width: min(100%, calc((100vh - 230px) * 16 / 9));
+    min-width: 280px;
+    max-width: 100%;
+    border: 4px solid var(--ol);
+    border-radius: 20px;
+    overflow: hidden;
+    background: linear-gradient(#e6f4ff, #fffaf0 75%);
+    box-shadow: 0 8px 0 var(--ol);
+  }
+  .stage svg { display: block; width: 100%; height: auto; }
+
+  .caption {
+    width: min(100%, calc((100vh - 230px) * 16 / 9));
+    min-width: 280px; max-width: 100%;
+    margin-top: 22px;
+    background: var(--panel);
+    border: 3px solid var(--ol);
+    border-radius: 16px;
+    padding: 14px 18px;
+    min-height: 96px;
+  }
+  .caption .chip {
+    display: inline-block;
+    background: var(--accent); color: #fff;
+    font-weight: 800; font-size: 14px;
+    padding: 3px 12px; border-radius: 999px;
+    margin-bottom: 6px;
+  }
+  .caption .title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+  .caption .text { font-size: 17px; line-height: 1.6; margin: 0; color: var(--muted); }
+
+  .controls {
+    width: min(100%, calc((100vh - 230px) * 16 / 9));
+    min-width: 280px; max-width: 100%;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 14px;
+  }
+  .btn {
+    font: inherit; font-weight: 800; font-size: 16px;
+    border: 3px solid var(--ol); border-radius: 12px;
+    background: #fff; color: var(--ol);
+    padding: 8px 16px; cursor: pointer;
+    box-shadow: 0 4px 0 var(--ol);
+    transition: transform .08s, box-shadow .08s;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ol); }
+  .btn:focus-visible, .dot:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .btn.primary { background: #ffd23f; }
+  .btn.on { background: #8ee3c8; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .dots { display: flex; gap: 6px; margin: 0 6px; flex-wrap: wrap; justify-content: center; }
+  .dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--ol); background: #fff; cursor: pointer; padding: 0;
+  }
+  .dot.active { background: var(--accent); }
+  .foot { margin-top: 14px; font-size: 14px; color: var(--muted); text-align: center; }
+
+  /* ---------- SVG styling ---------- */
+  svg text { font-family: inherit; font-weight: 800; fill: var(--ol); }
+  .lbl { font-size: 18px; text-anchor: middle; }
+  .big { paint-order: stroke; stroke: #fff; stroke-width: 8px; stroke-linejoin: round; }
+  .chem { font-family: 'Times New Roman', serif !important; }
+
+  .scene { display: none; }
+  .scene.active { display: inline; }
+
+  .pop, .pulse, .spin { transform-box: fill-box; transform-origin: center; }
+  .pour { transform-box: fill-box; transform-origin: var(--o, 100% 0%); }
+
+  @keyframes pop { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeOut { to { opacity: 0; } }
+  @keyframes drop {
+    0% { transform: translateY(var(--dy)); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes rub { from { transform: translateX(0); } to { transform: translateX(var(--dx)); } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  @keyframes glow { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  @keyframes pour { 0% { transform: rotate(0); } 25%, 75% { transform: rotate(var(--r)); } 100% { transform: rotate(0); } }
+  @keyframes rise {
+    0% { transform: translate(0, 0); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy2)); opacity: 0; }
+  }
+  @keyframes fall {
+    0% { transform: translateY(0); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translateY(40px); opacity: 0; }
+  }
+
+  .draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
+
+  .play .pop  { animation: pop .55s cubic-bezier(.34,1.56,.64,1) var(--d, 0s) both; }
+  .play .fi   { animation: fadeIn .6s ease var(--d, 0s) both; }
+  .play .fo   { animation: fadeOut .8s ease var(--d, 0s) forwards; }
+  .play .drop { animation: drop 1s cubic-bezier(.45,0,.35,1.15) var(--d, 0s) both; }
+  .play .draw { animation: draw 1s ease var(--d, 0s) forwards; }
+  .play .rub  { animation: rub .45s ease-in-out var(--d, 0s) var(--n, 4) alternate both; }
+  .play .bob  { animation: bob 2.2s ease-in-out var(--d, 0s) infinite; }
+  .play .pulse{ animation: pulse 1.2s ease-in-out var(--d, 0s) infinite; }
+  .play .glow { animation: glow 1.3s ease-in-out var(--d, 0s) infinite; }
+  .play .pour { animation: pour 3s ease-in-out var(--d, 0s) both; }
+  .play .rise { animation: rise 2s ease-out var(--d, 0s) infinite both; }
+  .play .fall { animation: fall .9s ease-in var(--d, 0s) infinite both; }
+  .play .drip { animation: fall .6s ease-in var(--d, 0s) 3 both; }
+  .swirl { transform-box: fill-box; transform-origin: 50% 100%; }
+  .spinA, .spinB { transform-box: fill-box; transform-origin: center; }
+  @keyframes spinX { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.12); } }
+  .play .spinA { animation: spinX .5s linear infinite; }
+  .play .spinB { animation: spinX .5s linear -.25s infinite; }
+  .grow { transform-box: fill-box; transform-origin: 50% 0%; }
+  @keyframes swirl { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+  @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  @keyframes dripN { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(var(--fy, 34px)); opacity: 0; } }
+  .play .swirl { animation: swirl .9s ease-in-out var(--d, 0s) var(--n, 3) both; }
+  .play .grow  { animation: grow var(--t, 5s) linear var(--d, 0s) both; }
+  .play .drips { animation: dripN var(--p, .6s) ease-in var(--d, 0s) var(--n, 6) both; }
+
+  @media (max-width: 600px) {
+    .caption .title { font-size: 19px; }
+    .caption .text { font-size: 15.5px; }
+    .btn { font-size: 14px; padding: 7px 11px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .play * { animation-duration: .01s !important; animation-iteration-count: 1 !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <div class="stage">
+    <svg id="svg" viewBox="0 0 800 450" role="img" aria-label="글리신산구리 정량분석(요오드 적정) 실험 과정 애니메이션">
+      <defs>
+        <marker id="arrowB" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M0 0 L10 5 L0 10z" fill="#3a86ff"/>
+        </marker>
+        <linearGradient id="endBar" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stop-color="#26346f"/>
+          <stop offset=".35" stop-color="#5566b0"/>
+          <stop offset=".58" stop-color="#b9c4e4"/>
+          <stop offset=".72" stop-color="#e2eaee"/>
+          <stop offset="1" stop-color="#efe9d8"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="caption" aria-live="polite">
+    <span class="chip" id="capChip"></span>
+    <p class="title" id="capTitle"></p>
+    <p class="text" id="capText"></p>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="prev">◀ 이전</button>
+    <div class="dots" id="dots"></div>
+    <button class="btn" id="replay">⟳ 다시보기</button>
+    <button class="btn primary" id="next">다음 ▶</button>
+    <button class="btn" id="auto">▶ 자동재생</button>
+    <button class="btn" id="fs">⛶ 전체화면</button>
+  </div>
+
+  <div class="foot">키보드 ← → 로 넘길 수 있어요</div>
+</div>
+
+<script>
+(() => {
+  const OL = '#2b2d42';
+  const ORANGE = '#e07a3c';
+  // ----- 용액 색 (단계별) -----
+  const CRY = '#9fd0ff';          // 글리신산구리 결정 (연한 파랑)
+  const ACID = '#eef6fb';         // 묽은 황산 (무색)
+  const CU_SOL = '#a9d9f2';       // Cu²⁺ 수용액: 연한 하늘색
+  const BROWN = '#9a5a1c';        // KI 첨가 직후: I₃⁻ + 흰 CuI → 탁한 황갈색
+  const OCHRE = '#c99a3c';        // 적정 중: 옅어지는 갈색
+  const PALE_Y = '#efe2a0';       // 녹말 넣기 직전: 연노란색
+  const NAVY = '#26346f';         // 녹말-아이오딘 착물: 청남색
+  const BLUE_MID = '#5566b0';     // 종말점 근처
+  const LAV = '#b9c4e4';          // 종말점 직전 (옅은 청색)
+  const POCARI = '#e2eaee';       // 종말점: 포카리색 (살짝 푸른 반투명 흰색)
+  const MILKIS = '#efe9d8';       // 종말점: 밀키스색 (뽀얀 우윳빛)
+  const THIO = '#f3f9fd';         // 싸이오황산 소듐 용액 (무색)
+
+  const st = (d, extra = '') => `style="--d:${d}s;${extra}"`;
+
+  const table = () =>
+    `<rect x="0" y="398" width="800" height="52" fill="#dcb583"/>
+     <rect x="0" y="398" width="800" height="7" fill="#b98a57"/>`;
+
+  const pill = (x, y, w, h, fill, text, fs = 20, txtFill = OL) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${OL}" stroke-width="4"/>
+     <text x="${x + w / 2}" y="${y + h / 2 + fs * .36}" font-size="${fs}" text-anchor="middle" style="fill:${txtFill}">${text}</text>`;
+
+  const box = (x, y, w, h, lines) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="#fff" stroke="${OL}" stroke-width="4"/>
+     ${lines.map(([t, fs, col, cls], i) => `<text x="${x + w / 2}" y="${y + 34 + i * 30}" font-size="${fs}" text-anchor="middle" ${cls ? `class="${cls}"` : ''} style="fill:${col || OL}">${t}</text>`).join('')}`;
+
+  const sparkle = (x, y, d, s = 1) =>
+    `<g transform="translate(${x} ${y}) scale(${s})"><path class="pop" ${st(d)} d="M0 -16 L4 -4 L16 0 L4 4 L0 16 L-4 4 L-16 0 L-4 -4Z" fill="#fff" stroke="#ffb703" stroke-width="2.5" stroke-linejoin="round"/></g>`;
+
+  const pile = (cx, cy, col, w = 40, dots = '#fff') =>
+    `<path d="M${cx - w} ${cy} Q${cx} ${cy - w * .8} ${cx + w} ${cy} Z" fill="${col}" stroke="${OL}" stroke-width="2.5" stroke-linejoin="round"/>
+     ${[[-.5, -.12], [-.15, -.3], [.25, -.22], [.55, -.08], [.05, -.1]].map(([a, b]) =>
+       `<circle cx="${cx + a * w}" cy="${cy + b * w}" r="2.2" fill="${dots}" opacity=".8"/>`).join('')}`;
+
+  // ----- 250 mL 삼각 플라스크 (local 160 x 198, 입구 y=0, 바닥 y=198) -----
+  const F_PATH = 'M62 0 V64 L6 182 Q0 198 18 198 H142 Q160 198 154 182 L98 64 V0';
+  const hw = (y) => 18 + (y - 64) * (56 / 118);
+  const F_BACK = `<path d="${F_PATH} Z" fill="#fff" opacity=".5"/>`;
+  const F_FRONT = `
+    <path d="${F_PATH}" fill="none" stroke="${OL}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    <rect x="56" y="-6" width="48" height="9" rx="3" fill="#fff" stroke="${OL}" stroke-width="3"/>
+    <path d="M52 96 L22 160" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity=".85"/>
+    <path d="M104 120 H118 M110 140 H126 M116 160 H134" stroke="${OL}" stroke-width="2.5" opacity=".45"/>`;
+  const fLiq = (col, t, a = '', op = .95) => {
+    const h = hw(t) - 3;
+    return `<g ${a}><path d="M${80 - h} ${t} L9 182 Q4 195 19 195 H141 Q156 195 151 182 L${80 + h} ${t} Z" fill="${col}" opacity="${op}"/>
+      <path d="M${84 - h} ${t} H${76 + h}" stroke="#fff" stroke-width="3" opacity=".55"/></g>`;
+  };
+  // 탁한 흰색 CuI 입자
+  const SPECK = [[30,186],[44,178],[58,188],[70,172],[84,184],[98,176],[112,189],[124,180],[136,187],[52,170],[90,168],[118,171],[64,181],[104,186],[38,190],[78,190]];
+  const specks = (a = '', op = .85, r = 2.6) =>
+    `<g ${a}>${SPECK.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" opacity="${op}"/>`).join('')}</g>`;
+  const flask = (x, y, inner = '', s = 1, cls = '', d = 0, extra = '') =>
+    `<g transform="translate(${x} ${y}) scale(${s})"><g class="${cls}" ${st(d, extra)}>${F_BACK}${inner}${F_FRONT}</g></g>`;
+  const CRY_POS = [[54,190,-20],[68,188,35],[82,191,-10],[96,187,60],[110,190,15],[74,182,80],[90,181,-30],[62,183,10]];
+  const needle = (x, y, a, s = 1) =>
+    `<g transform="translate(${x} ${y}) rotate(${a}) scale(${s})"><rect x="-9" y="-2.5" width="18" height="5" rx="2" fill="${CRY}" stroke="${OL}" stroke-width="1.5"/></g>`;
+  const crystalsIn = () => CRY_POS.map(([x, y, a]) => needle(x, y, a)).join('');
+
+  // ----- 뷰렛 (local: 관 x -9..9, y 0..180, 콕 180..194, 끝 194..216) -----
+  const buret = (drain = '', reading = true) =>
+    `<rect x="-9" y="0" width="18" height="182" rx="4" fill="#fff" opacity=".7"/>
+     <rect x="-6" y="48" width="12" height="132" fill="${THIO}"/>
+     <rect x="-6" y="48" width="12" height="3" fill="#9ab"/>
+     ${drain}
+     <rect x="-9" y="0" width="18" height="182" rx="4" fill="none" stroke="${OL}" stroke-width="3.5"/>
+     ${Array.from({ length: 9 }, (_, i) => `<path d="M-9 ${20 + i * 18} H${i % 2 ? -1 : 3}" stroke="${OL}" stroke-width="1.8" opacity=".55"/>`).join('')}
+     <rect x="-14" y="182" width="28" height="12" rx="3" fill="#e9eef3" stroke="${OL}" stroke-width="3"/>
+     <rect x="10" y="184" width="22" height="8" rx="3" fill="#3a86ff" stroke="${OL}" stroke-width="2.5"/>
+     <path d="M-4 194 L-2 216 H2 L4 194" fill="#fff" stroke="${OL}" stroke-width="3" stroke-linejoin="round"/>`;
+  const stand = (rx = 560) =>
+    `<rect x="${rx - 40}" y="384" width="120" height="14" rx="5" fill="#9aa3ad" stroke="${OL}" stroke-width="3"/>
+     <rect x="${rx}" y="20" width="10" height="366" rx="4" fill="#c9d1d9" stroke="${OL}" stroke-width="3"/>
+     <rect x="409" y="78" width="${rx - 409}" height="8" rx="3" fill="#c9d1d9" stroke="${OL}" stroke-width="3"/>
+     <rect x="${rx - 6}" y="70" width="22" height="24" rx="4" fill="#7c8794" stroke="${OL}" stroke-width="3"/>
+     <rect x="400" y="70" width="22" height="24" rx="5" fill="#7c8794" stroke="${OL}" stroke-width="3"/>`;
+  // 뷰렛 + 스탠드 (뷰렛 끝 = (400, 210))
+  const rig = (drainD = 0, drainT = 0, drainH = 0, drainFrom = 0) =>
+    `${stand()}
+     <g transform="translate(400 -46)">${buret(
+       (drainFrom > 0 ? `<rect x="-6" y="48" width="12" height="${drainFrom}" fill="#fff"/>` : '') +
+       (drainH > 0 ? `<rect class="grow" ${st(drainD, `--t:${drainT}s`)} x="-6" y="${48 + drainFrom}" width="12" height="${drainH}" fill="#fff"/>` : '')
+     )}</g>`;
+  const drops = (d, n, p = .6, col = THIO) =>
+    `<circle class="drips" ${st(d, `--n:${n};--p:${p}s;--fy:40px`)} cx="400" cy="174" r="4.5" fill="${col}" stroke="${OL}" stroke-width="1.5"/>`;
+
+  // 자석 교반기 (상판 y=358, 바닥 y=398)
+  const stirrer = (cx = 400) =>
+    `<rect x="${cx - 98}" y="362" width="196" height="36" rx="8" fill="#e9edf1" stroke="${OL}" stroke-width="4"/>
+     <rect x="${cx - 88}" y="354" width="176" height="10" rx="4" fill="#c9d1d9" stroke="${OL}" stroke-width="3"/>
+     <rect x="${cx - 86}" y="372" width="40" height="16" rx="3" fill="#163828"/>
+     <text x="${cx - 66}" y="385" font-size="10" text-anchor="middle" style="fill:#7dffa6;font-family:'Courier New',monospace">rpm</text>
+     <circle class="glow" ${st(0)} cx="${cx - 32}" cy="380" r="4" fill="#3ddc84"/>
+     <circle cx="${cx + 72}" cy="380" r="10" fill="#fff" stroke="${OL}" stroke-width="3"/>
+     <path d="M${cx + 72} 380 L${cx + 78} 373" stroke="${OL}" stroke-width="3" stroke-linecap="round"/>
+     <text x="${cx + 26}" y="386" font-size="13" text-anchor="middle" style="fill:#5c6270">교반기</text>`;
+  // 십자 교반자석 (플라스크 local 좌표, 바닥 근처) + 소용돌이
+  const stirBar = () =>
+    `<g transform="translate(80 188) scale(1.35)">
+       <ellipse cx="0" cy="3" rx="24" ry="3" fill="${OL}" opacity=".18"/>
+       <g class="spinA" ${st(0)}><rect x="-20" y="-3.5" width="40" height="7" rx="3.5" fill="#fff" stroke="${OL}" stroke-width="2"/></g>
+       <g class="spinB" ${st(0)}><rect x="-20" y="-3.5" width="40" height="7" rx="3.5" fill="#f2f4f7" stroke="${OL}" stroke-width="2"/></g>
+       <rect x="-4" y="-5" width="8" height="10" rx="2" fill="#fff" stroke="${OL}" stroke-width="2"/>
+     </g>`;
+  const vortex = (t) =>
+    `<path class="glow" ${st(0)} d="M${80 - hw(t) + 16} ${t + 4} Q80 ${t + 16} ${80 + hw(t) - 16} ${t + 4}" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8"/>`;
+
+  const reading = (x, y, from, to, d) =>
+    `<g>
+       <rect x="${x}" y="${y}" width="190" height="78" rx="14" fill="#fff" stroke="${OL}" stroke-width="4"/>
+       <text x="${x + 95}" y="${y + 28}" font-size="15" text-anchor="middle" style="fill:#5c6270">뷰렛 눈금</text>
+       <rect x="${x + 20}" y="${y + 36}" width="150" height="32" rx="6" fill="#163828"/>
+       <g class="fo" ${st(d)}><text x="${x + 158}" y="${y + 60}" font-size="21" text-anchor="end" style="fill:#7dffa6;font-family:'Courier New',monospace">${from}</text></g>
+       <g class="fi" ${st(d + .2)}><text x="${x + 158}" y="${y + 60}" font-size="21" text-anchor="end" style="fill:#7dffa6;font-family:'Courier New',monospace">${to}</text></g>
+     </g>`;
+
+  const reagentBottle = (cap, label, liqCol, fs = 9) => `
+    <rect x="-12" y="-46" width="24" height="10" rx="3" fill="${cap}" stroke="${OL}" stroke-width="3"/>
+    <rect x="-9" y="-36" width="18" height="16" fill="#f2f8ff" stroke="${OL}" stroke-width="3"/>
+    <rect x="-24" y="-22" width="48" height="62" rx="10" fill="#f2f8ff" stroke="${OL}" stroke-width="3"/>
+    <rect x="-20" y="10" width="40" height="27" rx="7" fill="${liqCol}"/>
+    <rect x="-20" y="-12" width="40" height="18" rx="3" fill="#fff" stroke="${OL}" stroke-width="2"/>
+    <text y="1" font-size="${fs}" text-anchor="middle" class="chem">${label}</text>`;
+
+  const balance = (x, y, from, to, d) => `
+    <rect x="${x + 122}" y="${y - 20}" width="16" height="22" fill="#9aa3ad" stroke="${OL}" stroke-width="3"/>
+    <rect x="${x}" y="${y}" width="260" height="80" rx="12" fill="#e3e7ec" stroke="${OL}" stroke-width="4"/>
+    <rect x="${x + 20}" y="${y + 20}" width="130" height="40" rx="6" fill="#163828" stroke="${OL}" stroke-width="3"/>
+    <g class="fo" ${st(d)}><text x="${x + 140}" y="${y + 48}" font-size="22" text-anchor="end" style="fill:#7dffa6;font-family:'Courier New',monospace">${from}</text></g>
+    <g class="fi" ${st(d + .2)}><text x="${x + 140}" y="${y + 48}" font-size="22" text-anchor="end" style="fill:#7dffa6;font-family:'Courier New',monospace">${to}</text></g>
+    <circle cx="${x + 190}" cy="${y + 40}" r="10" fill="#fff" stroke="${OL}" stroke-width="3"/>
+    <circle cx="${x + 226}" cy="${y + 40}" r="10" fill="#fff" stroke="${OL}" stroke-width="3"/>
+    <rect x="${x + 50}" y="${y - 28}" width="160" height="10" rx="5" fill="#c9d1d9" stroke="${OL}" stroke-width="3"/>`;
+
+  const goggles = `
+    <path d="M-58 -2 Q0 -30 58 -2" fill="none" stroke="${OL}" stroke-width="6"/>
+    <rect x="-52" y="-24" width="46" height="40" rx="15" fill="#bde0fe" stroke="${OL}" stroke-width="4"/>
+    <rect x="6" y="-24" width="46" height="40" rx="15" fill="#bde0fe" stroke="${OL}" stroke-width="4"/>
+    <rect x="-8" y="-10" width="16" height="9" fill="${OL}"/>
+    <path d="M-42 -14 L-30 -2" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`;
+  const glove = () => `<g>
+      <rect x="-24" y="-38" width="11" height="34" rx="5.5" fill="#7fd1ae" stroke="${OL}" stroke-width="3"/>
+      <rect x="-12" y="-46" width="11" height="42" rx="5.5" fill="#7fd1ae" stroke="${OL}" stroke-width="3"/>
+      <rect x="0" y="-44" width="11" height="40" rx="5.5" fill="#7fd1ae" stroke="${OL}" stroke-width="3"/>
+      <rect x="12" y="-36" width="11" height="32" rx="5.5" fill="#7fd1ae" stroke="${OL}" stroke-width="3"/>
+      <ellipse cx="-30" cy="6" rx="8" ry="18" transform="rotate(-35 -30 6)" fill="#7fd1ae" stroke="${OL}" stroke-width="3"/>
+      <rect x="-25" y="-12" width="49" height="54" rx="14" fill="#7fd1ae" stroke="${OL}" stroke-width="3"/>
+    </g>`;
+
+  const cylinder = (liqCol, d) => `
+    <rect x="2" y="2" width="40" height="176" rx="6" fill="#fff" opacity=".6"/>
+    <g class="fo" ${st(d)}><rect x="5" y="96" width="34" height="79" rx="4" fill="${liqCol}"/><path d="M6 96 H38" stroke="#9ab" stroke-width="2"/></g>
+    <rect x="2" y="2" width="40" height="176" rx="6" fill="none" stroke="${OL}" stroke-width="4"/>
+    <path d="M28 40 H40 M32 60 H40 M28 80 H40 M32 100 H40 M28 120 H40 M32 140 H40" stroke="${OL}" stroke-width="2" opacity=".5"/>
+    <rect x="-8" y="176" width="60" height="10" rx="4" fill="#cfd6dd" stroke="${OL}" stroke-width="3"/>`;
+
+  const dropper = `
+    <rect x="-9" y="-70" width="18" height="30" rx="9" fill="#ff8fa3" stroke="${OL}" stroke-width="3"/>
+    <path d="M-5 -42 V-4 L-1.5 8 H1.5 L5 -4 V-42" fill="#fff" stroke="${OL}" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="-3" y="-24" width="6" height="22" fill="#f4f1ea"/>`;
+
+  // ---------- Scene 0: title ----------
+  const miniF = (x, col, sp, d) => `<g class="bob" ${st(d)}>${flask(x, 252, fLiq(col, 150) + (sp ? specks('', .8) : ''), .62)}</g>`;
+  const arrowY = (x) => `<g class="pulse" ${st(0)}><path d="M${x} 312 H${x + 34} V300 L${x + 56} 318 L${x + 34} 336 V324 H${x} Z" fill="#ffd23f" stroke="${OL}" stroke-width="3.5" stroke-linejoin="round"/></g>`;
+  const s0 = `
+    ${sparkle(130, 80, .6)}${sparkle(680, 110, .9, .8)}${sparkle(630, 52, 1.2, .6)}
+    <g class="pop" ${st(0)}><text x="400" y="140" font-size="62" text-anchor="middle" class="big">글리신산구리 정량분석</text></g>
+    <g class="fi" ${st(.5)}><text x="400" y="190" font-size="22" text-anchor="middle" style="fill:#5c6270">요오드 적정으로 구리 함량(%)을 구해요</text></g>
+    <g class="fi" ${st(.8)}>
+      ${miniF(160, CU_SOL, false, 0)}
+      ${arrowY(275)}
+      ${miniF(350, BROWN, true, .4)}
+      ${arrowY(466)}
+      ${miniF(540, MILKIS, true, .8)}
+    </g>
+    <g class="pop" ${st(1.3)} id="startBtn" style="cursor:pointer">
+      <rect x="320" y="390" width="160" height="46" rx="23" fill="${ORANGE}" stroke="${OL}" stroke-width="4"/>
+      <text x="400" y="420" font-size="20" text-anchor="middle" style="fill:#fff">시작하기 ▶</text>
+    </g>`;
+
+  // ---------- Scene 1: materials ----------
+  const item = (x, y, d, art, label, note = '') =>
+    `<g transform="translate(${x} ${y})"><g class="pop" ${st(d)}>
+       <circle r="62" fill="#fff" stroke="${OL}" stroke-width="3" opacity=".9"/>
+       ${art}
+       <text y="86" class="lbl" font-size="16">${label}</text>
+       ${note ? `<text y="105" class="lbl" font-size="13" style="fill:#5c6270">${note}</text>` : ''}
+     </g></g>`;
+  const dish = (col, dots = '#fff') => `<ellipse cx="0" cy="22" rx="44" ry="12" fill="#fff" stroke="${OL}" stroke-width="3"/>${pile(0, 20, col, 28, dots)}`;
+  const s1 = `
+    <text x="400" y="48" font-size="32" text-anchor="middle" class="big">준비물</text>
+    ${item(100, 132, .1, dish(CRY), '글리신산구리(Ⅱ)', '일수화물 0.30 g')}
+    ${item(250, 132, .25, `<g transform="translate(0 4)">${reagentBottle('#e63946', 'H₂SO₄', ACID)}</g>`, '0.05 M 황산', '35 mL')}
+    ${item(400, 132, .4, dish('#fbfaf6', '#c9c4b3'), '요오드화 칼륨', 'KI 1.0 g')}
+    ${item(550, 132, .55, `<g transform="translate(0 4)">${reagentBottle('#3a86ff', 'Na₂S₂O₃', THIO, 8)}</g>`, '0.1 M 싸이오황산 소듐', '적정 용액')}
+    ${item(700, 132, .7, `<g transform="translate(0 4)">${reagentBottle('#ffd23f', '녹말', '#f4f1ea')}</g>`, '녹말 용액', '2 mL')}
+    ${item(100, 315, .9, flask(-34, -38, fLiq(ACID, 144), .43), '250 mL', '삼각 플라스크')}
+    ${item(250, 315, 1.05, `<g transform="translate(0 -52) scale(.48)">${buret()}</g>`, '뷰렛 · 스탠드', '자석 교반기')}
+    ${item(400, 315, 1.2, `<g transform="translate(-52 2) scale(.4)">${balance(0, 0, '', '0.00', 0)}</g>`, '전자저울', '0.01 g 단위')}
+    ${item(550, 315, 1.35, `<g transform="translate(-10 -48) scale(.52)">${cylinder(ACID, 99)}</g>`, '눈금 실린더', '')}
+    ${item(700, 315, 1.5, `<g transform="translate(0 -12) scale(.55)">${goggles}</g><g transform="translate(0 32) scale(.42)">${glove()}</g>`, '보안경 · 장갑')}`;
+
+  // ---------- Scene 2: STEP 1 weigh ----------
+  const s2 = `
+    ${table()}
+    <g class="pop" ${st(0)}>${pill(150, 22, 500, 52, '#fff', '0.01 g 단위까지 정확히 질량 재기', 21)}</g>
+    ${balance(70, 318, '0.00 g', '0.30 g', 1.6)}
+    <g class="drop" ${st(.4, '--dy:-150px')}>
+      <path d="M140 290 L160 304 H240 L260 290 Z" fill="#fff" stroke="#9aa3ad" stroke-width="2.5"/>
+      <g class="fo" ${st(3.4)}>${pile(200, 296, CRY, 30)}</g>
+    </g>
+    <g class="pop" ${st(1.9)}>${pill(110, 220, 180, 46, '#ffd23f', '0.30 g', 21)}</g>
+    <g class="fi" ${st(2.8)}>
+      <path d="M300 240 Q380 150 470 230" fill="none" stroke="#3a86ff" stroke-width="4" stroke-linecap="round" stroke-dasharray="10 8" marker-end="url(#arrowB)"/>
+      <text x="384" y="150" font-size="16" text-anchor="middle" class="big">플라스크에 모두 옮기기</text>
+    </g>
+    ${flask(500, 200, `<g class="drop" ${st(3.4, '--dy:-230px')}>${crystalsIn()}</g>`)}
+    <text x="580" y="432" class="lbl">250 mL 삼각 플라스크</text>
+    <text x="200" y="432" class="lbl">전자저울</text>`;
+
+  // ---------- Scene 3: STEP 2 sulfuric acid ----------
+  const s3 = `
+    ${table()}
+    <g class="pop" ${st(0)}>${pill(18, 22, 330, 52, '#ffd23f', '0.05 M 황산 35 mL', 21)}</g>
+    ${flask(320, 200, `
+      <g class="fo" ${st(3.4)}>${crystalsIn()}</g>
+      ${fLiq(ACID, 144, `class="fi" ${st(1.6)}`, .9)}
+      ${fLiq(CU_SOL, 144, `class="fi" ${st(3.0)}`, .95)}`, 1, 'swirl', 3.0, '--n:4')}
+    <g transform="translate(560 72)"><g class="pour" ${st(.4, '--r:-62deg;--o:0% 0%')}>${cylinder(ACID, 1.6)}</g></g>
+    <g class="fo" ${st(2.5)}><path class="draw" ${st(1.1)} pathLength="1" d="M558 74 C520 60 430 110 404 330" fill="none" stroke="#d6ecfb" stroke-width="8" stroke-linecap="round"/>
+      <path d="M558 74 C520 60 430 110 404 330" fill="none" stroke="#8fb8d8" stroke-width="2" stroke-dasharray="2 10" opacity=".7"/></g>
+    <g class="pop" ${st(4.4)}>${box(18, 120, 290, 96, [['Cu(gly)₂ + 2H⁺ → Cu²⁺ + 2Hgly', 17, OL, 'chem'], ['착물이 분해되어 녹아요', 15, '#5c6270']])}</g>
+    <g class="pop" ${st(5.0)}>${pill(560, 300, 220, 46, CU_SOL, '연한 하늘색', 19)}</g>
+    <g class="pop" ${st(5.0)}><path d="M560 323 H492" stroke="#3a86ff" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowB)"/></g>
+    <text x="400" y="432" class="lbl">흔들어 녹이기</text>`;
+
+  // ---------- Scene 4: STEP 3 KI ----------
+  const s4 = `
+    ${table()}
+    <g class="pop" ${st(0)}>${pill(18, 22, 330, 52, '#ffd23f', '요오드화 칼륨 1.0 g', 21)}</g>
+    ${flask(320, 200, `
+      ${fLiq(CU_SOL, 144, '', .95)}
+      <g class="drop" ${st(.6, '--dy:-240px')}><g class="fo" ${st(2.0)}>${pile(80, 194, '#fbfaf6', 24, '#c9c4b3')}</g></g>
+      ${fLiq('#c78a3a', 144, `class="fi" ${st(1.8)}`, .95)}
+      ${fLiq(BROWN, 144, `class="fi" ${st(3.0)}`, .97)}
+      ${specks(`class="fi" ${st(2.4)}`, .85)}`, 1, 'swirl', 2.0, '--n:5')}
+    <g class="pop" ${st(4.2)}>${box(18, 104, 300, 126, [['2Cu²⁺ + 4I⁻ → 2CuI↓ + I₂', 18, OL, 'chem'], ['I₂ + I⁻ → I₃⁻ (갈색)', 17, OL, 'chem'], ['CuI는 흰색 침전', 15, '#5c6270']])}</g>
+    <g class="pop" ${st(5.0)}>${pill(536, 250, 250, 46, BROWN, '탁한 황갈색', 19, '#fff')}</g>
+    <g class="pop" ${st(5.0)}><path d="M536 273 H486" stroke="#3a86ff" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowB)"/></g>
+    <g class="pop" ${st(5.6)}>${pill(536, 316, 250, 40, '#fff', '흰 알갱이 = CuI', 17)}</g>
+    <text x="400" y="432" class="lbl">잘 저어 섞기</text>`;
+
+  // ---------- Scene 5: STEP 4 titrate (brown → pale yellow) ----------
+  const s5 = `
+    ${table()}
+    ${rig(.8, 6.4, 84)}
+    ${drops(.8, 10, .64)}
+    ${stirrer()}
+    ${flask(320, 160, `
+      ${fLiq(BROWN, 144, '', .97)}
+      ${fLiq(OCHRE, 142, `class="fi" ${st(2.4)}`, .96)}
+      ${fLiq('#ddc06a', 141, `class="fi" ${st(4.4)}`, .95)}
+      ${fLiq(PALE_Y, 140, `class="fi" ${st(6.4)}`, .95)}
+      ${specks('', .85)}${stirBar()}${vortex(140)}`)}
+    <g class="pop" ${st(0)}>${pill(18, 22, 340, 52, '#ffd23f', '0.1 M Na₂S₂O₃로 적정', 21)}</g>
+    <g class="pop" ${st(.3)}>${box(18, 96, 290, 96, [['I₂ + 2S₂O₃²⁻ → 2I⁻ + S₄O₆²⁻', 16, OL, 'chem'], ['아이오딘이 줄어 색이 옅어져요', 15, '#5c6270']])}</g>
+    ${reading(596, 112, '0.00 mL', '약 11 mL', 7.0)}
+    <g class="fi" ${st(1.2)}>
+      ${[[BROWN, '황갈색', '#fff'], [OCHRE, '옅은 갈색', '#fff'], [PALE_Y, '연노란색', OL]].map(([c, t, tc], i) =>
+        `<g class="pop" ${st(1.2 + i * 2.6)}>${pill(30, 222 + i * 52, 150, 40, c, t, 17, tc)}</g>`).join('')}
+      <path d="M105 262 V272 M105 314 V324" stroke="${OL}" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <g class="pop" ${st(7.6)}>${pill(596, 214, 190, 64, '#fff', '', 15)}
+      <text x="691" y="241" font-size="15" text-anchor="middle">아이오딘 색이</text>
+      <text x="691" y="264" font-size="15" text-anchor="middle">사라지기 시작하면 멈춤</text></g>
+    <text x="400" y="432" class="lbl">교반기 위에서 적정 (십자 교반자석)</text>`;
+
+  // ---------- Scene 6: STEP 5 starch (pale yellow → navy) ----------
+  const s6 = `
+    ${table()}
+    ${rig(0, 0, 0, 84)}
+    ${stirrer()}
+    ${flask(320, 160, `
+      ${fLiq(PALE_Y, 140, '', .95)}
+      ${fLiq('#6a6aa0', 138, `class="fi" ${st(1.9)}`, .95)}
+      ${fLiq(NAVY, 138, `class="fi" ${st(2.8)}`, .97)}
+      ${specks('', .75)}${stirBar()}${vortex(138)}`)}
+    <g transform="translate(362 100) rotate(-22)"><g class="drop" ${st(.2, '--dy:-120px')}>${dropper}</g></g>
+    <circle class="drips" ${st(1.2, '--n:3;--p:.5s;--fy:30px')} cx="366" cy="113" r="4" fill="#f4f1ea" stroke="${OL}" stroke-width="1.5"/>
+    <g class="pop" ${st(0)}>${pill(18, 22, 300, 52, '#ffd23f', '녹말 용액 2 mL', 21)}</g>
+    <g class="pop" ${st(3.6)}>${box(18, 104, 270, 96, [['녹말-아이오딘 착물', 18, OL], ['남은 I₂가 있다는 신호', 15, '#5c6270']])}</g>
+    <g class="pop" ${st(1.0)}>${pill(30, 236, 150, 40, PALE_Y, '연노란색', 17)}</g>
+    <path class="fi" ${st(2.4)} d="M105 280 V290" stroke="${OL}" stroke-width="3" stroke-linecap="round"/>
+    <g class="pop" ${st(2.8)}>${pill(30, 294, 150, 40, NAVY, '청남색', 17, '#fff')}</g>
+    ${reading(596, 112, '약 11 mL', '약 11 mL', 99)}
+    <g class="pop" ${st(4.4)}>${pill(578, 222, 210, 70, '#fff', '', 15)}
+      <text x="683" y="250" font-size="14" text-anchor="middle">처음부터 녹말을 넣고</text>
+      <text x="683" y="274" font-size="14" text-anchor="middle">적정해도 괜찮아요</text></g>
+    <text x="400" y="432" class="lbl">녹말 넣고 계속 교반</text>`;
+
+  // ---------- Scene 7: STEP 5 endpoint (navy → milky) ----------
+  const swatch = (x, y, col, name, d) =>
+    `<g class="pop" ${st(d)}>
+       <rect x="${x}" y="${y}" width="84" height="56" rx="10" fill="${col}" stroke="${OL}" stroke-width="3"/>
+       ${SPECK.slice(0, 7).map(([sx, sy]) => `<circle cx="${x + sx * .55 + 2}" cy="${y + (sy - 166) * 1.6 + 8}" r="2" fill="#fff" opacity=".9"/>`).join('')}
+       <text x="${x + 42}" y="${y + 78}" font-size="15" text-anchor="middle">${name}</text>
+     </g>`;
+  const s7 = `
+    ${table()}
+    ${rig(.6, 6.6, 20, 84)}
+    ${drops(.6, 7, 1.0)}
+    ${stirrer()}
+    ${flask(320, 160, `
+      ${fLiq(NAVY, 138, '', .97)}
+      ${fLiq(BLUE_MID, 137, `class="fi" ${st(2.6)}`, .96)}
+      ${fLiq(LAV, 136, `class="fi" ${st(4.6)}`, .95)}
+      ${fLiq(POCARI, 136, `class="fi" ${st(6.2)}`, .97)}
+      ${fLiq(MILKIS, 136, `class="fi" ${st(6.9)}`, .6)}
+      ${specks('', .8)}${stirBar()}${vortex(136)}`)}
+    <g class="pop" ${st(0)}>${pill(18, 22, 300, 52, '#ffd23f', '한 방울씩 적정!', 21)}</g>
+    ${[[NAVY, '청남색', '#fff'], [BLUE_MID, '연한 파랑', '#fff'], [LAV, '거의 사라짐', OL]].map(([c, t, tc], i) =>
+      `<g class="pop" ${st(.4 + i * 2.2)}>${pill(30, 100 + i * 52, 150, 40, c, t, 17, tc)}</g>`).join('')}
+    <path class="fi" ${st(2.2)} d="M105 140 V150" stroke="${OL}" stroke-width="3" stroke-linecap="round"/>
+    <path class="fi" ${st(4.4)} d="M105 192 V202" stroke="${OL}" stroke-width="3" stroke-linecap="round"/>
+    <g class="pop" ${st(7.4)}>
+      <rect x="18" y="258" width="282" height="128" rx="16" fill="#fff" stroke="#e63946" stroke-width="5"/>
+      <text x="159" y="288" font-size="19" text-anchor="middle" style="fill:#e63946">STOP! 종말점</text>
+      ${swatch(48, 298, MILKIS, '밀키스색', 7.8)}
+      ${swatch(186, 298, POCARI, '포카리색', 8.0)}
+      <text x="159" y="330" font-size="20" text-anchor="middle">~</text>
+    </g>
+    ${reading(596, 112, '약 11 mL', 'V ≈ 13 mL', 7.2)}
+    <g class="pop" ${st(8.4)}>${pill(578, 222, 210, 70, '#fff', '', 15)}
+      <text x="683" y="250" font-size="14" text-anchor="middle">멈추고 눈금 읽기</text>
+      <text x="683" y="274" font-size="14" text-anchor="middle" style="fill:#5c6270">(순도 100%면 13.1 mL)</text></g>
+    ${sparkle(330, 340, 7.6, .7)}${sparkle(470, 330, 7.9, .6)}
+    <text x="400" y="432" class="lbl">흰색 현탁액이 되면 끝</text>`;
+
+  // ---------- Scene 8: color summary ----------
+  const COLS = [
+    [CU_SOL, false, '① 시료 + 황산', '연한 하늘색'],
+    [BROWN, true, '② + KI', '탁한 황갈색'],
+    [PALE_Y, true, '③ 적정 중', '연노란색'],
+    [NAVY, true, '④ + 녹말', '청남색'],
+    [MILKIS, true, '⑤ 종말점', '밀키스~포카리'],
+  ];
+  const s8 = `
+    <text x="400" y="50" font-size="30" text-anchor="middle" class="big">색 변화 한눈에 보기</text>
+    ${COLS.map(([c, sp, t1, t2], i) => {
+      const cx = 90 + i * 155;
+      return `<g class="pop" ${st(.3 + i * .6)}>
+        ${flask(cx - 48, 84, fLiq(c, 150) + (sp ? specks('', .8) : ''), .6)}
+        <text x="${cx}" y="226" font-size="16" text-anchor="middle">${t1}</text>
+        <text x="${cx}" y="248" font-size="15" text-anchor="middle" style="fill:#5c6270">${t2}</text>
+      </g>
+      ${i < 4 ? `<g class="fi" ${st(.6 + i * .6)}><path d="M${cx + 46} 150 H${cx + 102}" stroke="#3a86ff" stroke-width="4" stroke-linecap="round" marker-end="url(#arrowB)"/></g>` : ''}`;
+    }).join('')}
+    <g class="pop" ${st(3.4)}><rect x="660" y="72" width="100" height="32" rx="16" fill="#e63946" stroke="${OL}" stroke-width="3"/>
+      <text x="710" y="94" font-size="16" text-anchor="middle" style="fill:#fff">STOP</text></g>
+    <g class="fi" ${st(3.8)}>
+      <text x="400" y="294" font-size="17" text-anchor="middle">녹말을 넣은 뒤 종말점까지</text>
+      <rect x="120" y="308" width="560" height="38" rx="10" fill="url(#endBar)" stroke="${OL}" stroke-width="3"/>
+      <text x="150" y="370" font-size="14" text-anchor="middle">청남색</text>
+      <text x="320" y="370" font-size="14" text-anchor="middle">연한 파랑</text>
+    </g>
+    <g class="pop" ${st(4.6)}>
+      <rect x="512" y="302" width="172" height="50" rx="12" fill="none" stroke="#e63946" stroke-width="5" stroke-dasharray="10 6"/>
+      <text x="598" y="372" font-size="15" text-anchor="middle" style="fill:#e63946">포카리색 ~ 밀키스색에서 멈춤</text>
+    </g>
+    <g class="pop" ${st(5.4)}>${pill(170, 386, 460, 46, '#fff', '흰색이 된 뒤 더 넣어도 색은 그대로 → 과적정 주의', 16)}</g>`;
+
+  // ---------- Scene 9: STEP 6 calculation ----------
+  const s9 = `
+    <text x="400" y="50" font-size="30" text-anchor="middle" class="big">구리의 질량 백분율 구하기</text>
+    <g class="pop" ${st(.3)}>
+      <rect x="40" y="74" width="720" height="78" rx="16" fill="#fff" stroke="${OL}" stroke-width="4"/>
+      <text x="400" y="106" font-size="20" text-anchor="middle" class="chem">2 Cu²⁺ → 1 I₂ → 2 S₂O₃²⁻</text>
+      <text x="400" y="138" font-size="19" text-anchor="middle" style="fill:${ORANGE}">∴ Cu : S₂O₃²⁻ = 1 : 1</text>
+    </g>
+    ${[
+      ['Cu 질량(g) = V(L) × 0.1 mol/L × 63.55 g/mol', 1.4],
+      ['Cu(%) = Cu 질량 ÷ 시료 질량 × 100', 2.2],
+      ['순도(%) = Cu(%) ÷ 27.67 % × 100', 3.0],
+    ].map(([t, d], i) => `<g class="pop" ${st(d)}>${pill(80, 172 + i * 60, 640, 48, i === 2 ? '#ffd23f' : '#bde0fe', t, 19)}</g>`).join('')}
+    <g class="pop" ${st(4.0)}>
+      <rect x="80" y="356" width="640" height="76" rx="16" fill="#fff" stroke="${OL}" stroke-width="4" stroke-dasharray="8 6"/>
+      <text x="400" y="386" font-size="16" text-anchor="middle">이론 Cu 함량: 63.55 ÷ 229.68 = 27.67 %</text>
+      <text x="400" y="416" font-size="16" text-anchor="middle" style="fill:#5c6270">예) 0.30 g 시료 → 1.306 mmol Cu → 순도 100%면 약 13.1 mL</text>
+    </g>`;
+
+  // ---------- Scene 10: safety ----------
+  const sCard = (x, d, label, note, art) =>
+    `<g class="pop" ${st(d)}>
+       <rect x="${x}" y="96" width="170" height="246" rx="18" fill="#fff" stroke="${OL}" stroke-width="4"/>
+       <g transform="translate(${x + 85} 190)">${art}</g>
+       <text x="${x + 85}" y="296" class="lbl" font-size="19">${label}</text>
+       <text x="${x + 85}" y="320" class="lbl" font-size="13" style="fill:#5c6270">${note}</text>
+     </g>`;
+  const s10 = `
+    <text x="400" y="62" font-size="32" text-anchor="middle" class="big">안전 수칙</text>
+    ${sCard(30, .1, '보안경 · 장갑', '실험 내내 착용', `<g transform="translate(0 -22) scale(.9)">${goggles}</g><g transform="translate(0 40) scale(.6)">${glove()}</g>`)}
+    ${sCard(220, .5, '산 취급 주의', '묻으면 바로 물로 씻기', `
+      <g transform="translate(0 8)">${reagentBottle('#e63946', 'H₂SO₄', ACID, 10)}</g>
+      ${[-30, 30].map((x, i) => `<path class="pulse" ${st(i * .4)} d="M${x} -48 q6 10 0 16 q-6 -6 0 -16Z" fill="#9fd3f5" stroke="${OL}" stroke-width="2"/>`).join('')}`)}
+    ${sCard(410, .9, '눈높이에서 읽기', '메니스커스 아래쪽', `
+      <rect x="-14" y="-56" width="28" height="104" rx="5" fill="#fff" stroke="${OL}" stroke-width="3"/>
+      <path d="M-11 -6 Q0 6 11 -6 V44 H-11 Z" fill="${THIO}" stroke="#8fb8d8" stroke-width="2"/>
+      <path d="M-14 0 H-4 M-14 -20 H-4 M-14 20 H-4" stroke="${OL}" stroke-width="2" opacity=".6"/>
+      <circle cx="-56" cy="0" r="9" fill="#fff" stroke="${OL}" stroke-width="3"/><circle cx="-54" cy="0" r="4" fill="${OL}"/>
+      <path class="pulse" ${st(1.2)} d="M-44 0 H-18" stroke="#3a86ff" stroke-width="3" stroke-dasharray="4 4"/>`)}
+    ${sCard(600, 1.3, '폐액 분리', '지정 폐액통에 버리기', `
+      <rect x="-14" y="-50" width="28" height="12" rx="3" fill="#ffd23f" stroke="${OL}" stroke-width="3"/>
+      <rect x="-32" y="-40" width="64" height="86" rx="12" fill="#eef2f5" stroke="${OL}" stroke-width="4"/>
+      <rect x="-28" y="4" width="56" height="38" rx="8" fill="${MILKIS}"/>
+      <rect x="-24" y="-28" width="48" height="24" rx="4" fill="#fff" stroke="${OL}" stroke-width="2"/>
+      <text y="-11" font-size="11" text-anchor="middle">Cu 폐액</text>`)}
+    <g class="pop" ${st(2.0)}>${pill(180, 362, 440, 54, '#ff6b6b', '구리·아이오딘 폐액은 하수구에 버리지 않아요!', 18, '#fff')}</g>`;
+
+  // dur: 장면별 자동재생 시간(초). 숫자만 바꾸면 장면마다 따로 조절됩니다.
+  const scenes = [
+    { html: s0, chip: '시작', title: '글리신산구리 정량분석', text: '지난주에 합성한 글리신산구리(Ⅱ) 일수화물 속 구리의 양을 요오드 적정으로 측정하여, 구리의 질량 백분율과 순도를 구합니다.', dur: 3 },
+    { html: s1, chip: '준비', title: '준비물', text: '글리신산구리 0.30 g, 0.05 M 황산 35 mL, 요오드화 칼륨 1.0 g, 0.1 M 싸이오황산 소듐 용액, 녹말 용액 2 mL와 250 mL 삼각 플라스크, 뷰렛을 준비합니다. 보안경과 장갑을 착용합니다.', dur: 3 },
+    { html: s2, chip: 'STEP 1', title: '시료 질량 재기', text: '합성한 글리신산구리(Ⅱ) 일수화물 약 0.30 g을 0.01 g 단위까지 정확하게 잰 뒤, 250 mL 삼각 플라스크에 넣습니다. 잰 질량은 꼭 기록합니다.', dur: 15 },
+    { html: s3, chip: 'STEP 2', title: '황산에 녹이기', text: '0.05 M 황산 35 mL를 가해 흔들어 녹입니다. 산이 글리신을 떼어내 착물이 분해되고, Cu²⁺ 이온 때문에 연한 하늘색 용액이 됩니다.', dur: 15 },
+    { html: s4, chip: 'STEP 3', title: '요오드화 칼륨 넣기', text: '요오드화 칼륨 1.0 g을 넣고 잘 저어줍니다. Cu²⁺가 I⁻를 산화시켜 아이오딘(I₂)이 생기고 흰색 CuI 침전이 생겨, 용액이 탁한 황갈색으로 변합니다.', dur: 15 },
+    { html: s5, chip: 'STEP 4', title: '싸이오황산 소듐으로 적정', text: '플라스크에 십자 교반자석을 넣어 자석 교반기 위에 올리고, 뷰렛에 0.1 M 싸이오황산 소듐 용액을 채워 교반하면서 적정합니다. 아이오딘이 줄어들면서 황갈색 → 옅은 갈색 → 연노란색으로 변하고, 아이오딘 색이 사라지기 시작하면 멈춥니다.', dur: 15 },
+    { html: s6, chip: 'STEP 5', title: '녹말 지시약 넣기', text: '녹말 용액 2 mL를 넣으면 남아 있는 아이오딘과 녹말-아이오딘 착물을 만들어 청남색이 됩니다. 중간에 넣다가 종말점을 지나칠 수 있으므로, 처음부터 녹말을 넣고 적정해도 됩니다.', dur: 15 },
+    { html: s7, chip: 'STEP 5', title: '종말점까지 한 방울씩', text: '종말점에 가까워지면 교반을 유지하면서 한 방울씩 넣습니다. 청남색이 사라지고 밀키스색~포카리색 사이의 흰색 현탁액이 되면 적정을 멈추고, 뷰렛 눈금을 읽어 사용한 부피(V)를 기록합니다.', dur: 15 },
+    { html: s8, chip: '정리', title: '색 변화 한눈에 보기', text: '연한 하늘색(Cu²⁺) → 탁한 황갈색(I₃⁻ + CuI) → 연노란색 → 청남색(녹말) → 밀키스~포카리색(종말점). 흰색이 된 뒤에는 더 넣어도 색이 변하지 않으므로 과적정에 주의합니다.', dur: 8 },
+    { html: s9, chip: 'STEP 6', title: '구리 질량 백분율과 순도', text: 'Cu²⁺와 S₂O₃²⁻는 1 : 1로 반응합니다. 적정 부피로 구리 질량을 구해 시료 질량으로 나누면 구리의 질량 백분율이 되고, 이론값 27.67 %와 비교해 순도를 결정합니다.', dur: 8 },
+    { html: s10, chip: '안전', title: '안전 수칙', text: '보안경과 장갑을 착용하고 황산이 피부에 묻으면 바로 물로 씻습니다. 뷰렛 눈금은 눈높이에서 읽고, 구리와 아이오딘이 든 폐액은 지정 폐액통에 버립니다.', dur: 3.5 },
+  ];
+
+  const svg = document.getElementById('svg');
+  const NS = 'http://www.w3.org/2000/svg';
+  const els = scenes.map((s) => {
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'scene');
+    g.innerHTML = s.html;
+    svg.appendChild(g);
+    return g;
+  });
+
+  const dotsBox = document.getElementById('dots');
+  scenes.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'dot';
+    b.setAttribute('aria-label', `${i + 1}번 장면: ${s.title}`);
+    b.onclick = () => go(i);
+    dotsBox.appendChild(b);
+  });
+
+  let cur = 0, autoTimer = null, autoOn = false;
+
+  function go(i) {
+    i = Math.max(0, Math.min(scenes.length - 1, i));
+    els.forEach(g => g.classList.remove('active', 'play'));
+    cur = i;
+    const g = els[i];
+    g.classList.add('active');
+    void g.getBoundingClientRect();
+    g.classList.add('play');
+    const s = scenes[i];
+    document.getElementById('capChip').textContent = s.chip;
+    document.getElementById('capTitle').textContent = s.title;
+    document.getElementById('capText').textContent = s.text;
+    [...dotsBox.children].forEach((d, k) => d.classList.toggle('active', k === i));
+    document.getElementById('prev').disabled = i === 0;
+    document.getElementById('next').disabled = i === scenes.length - 1;
+    scheduleAuto();
+  }
+
+  function scheduleAuto() {
+    clearTimeout(autoTimer);
+    if (!autoOn) return;
+    autoTimer = setTimeout(() => go((cur + 1) % scenes.length), scenes[cur].dur * 1000);
+  }
+  function setAuto(on) {
+    autoOn = on;
+    const b = document.getElementById('auto');
+    b.classList.toggle('on', on);
+    b.textContent = on ? '⏸ 자동재생 중' : '▶ 자동재생';
+    scheduleAuto();
+  }
+
+  document.getElementById('prev').onclick = () => go(cur - 1);
+  document.getElementById('next').onclick = () => go(cur + 1);
+  document.getElementById('replay').onclick = () => go(cur);
+  document.getElementById('auto').onclick = () => setAuto(!autoOn);
+  document.getElementById('fs').onclick = () => {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else { const p = document.getElementById('app').requestFullscreen?.(); p?.catch?.(() => {}); }
+    } catch (e) {}
+  };
+  els[0].querySelector('#startBtn').addEventListener('click', () => go(1));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(cur - 1); }
+  });
+
+  go(0);
+  setAuto(true);
+})();
+</script>
+</body>
+</html>
